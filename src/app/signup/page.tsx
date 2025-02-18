@@ -1,31 +1,109 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Eye, EyeOff } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SignUp() {
+  const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [formData, setFormData] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: "",
+    gender: "male",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+  const router = useRouter()
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleRadioChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, gender: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (formData.password !== formData.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+      })
+
+      if (authError) throw authError
+
+      if (authData.user) {
+        // Insert the user data into the admin_users table
+        const { error: insertError } = await supabase.from("admin_users").insert({
+          id: authData.user.id,
+          first_name: formData.firstName,
+          middle_name: formData.middleName,
+          last_name: formData.lastName,
+          date_of_birth: formData.dateOfBirth,
+          gender: formData.gender,
+          email: formData.email,
+        })
+
+        if (insertError) throw insertError
+
+        // Show success toast and redirect to dashboard
+        toast({
+          title: "Sign up successful!",
+          description: "Welcome to mHealth admin dashboard.",
+        })
+        router.push("/dashboard")
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({
+          title: "Sign up failed",
+          description: error.message,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Sign up failed",
+          description: "An unexpected error occurred during sign up",
+          variant: "destructive",
+        })
+      }
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center justify-center">
-          <Image
-            src="/official-logo.png"
-            alt="mHealth Logo"
-            width={150}
-            height={150}
-            className="mb-6"
-            priority
-          />
+          <Image src="/official-logo.png" alt="mHealth Logo" width={150} height={150} className="mb-6" priority />
           <Card className="w-full shadow-lg border-0">
             <CardHeader className="space-y-1 text-center">
               <CardTitle className="text-2xl font-bold tracking-tight text-[#2c3e50]">Admin Sign Up</CardTitle>
@@ -34,28 +112,28 @@ export default function SignUp() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" placeholder="John" required />
+                    <Input id="firstName" name="firstName" placeholder="John" required onChange={handleInputChange} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="middleName">Middle Name</Label>
-                    <Input id="middleName" placeholder="Michael" />
+                    <Input id="middleName" name="middleName" placeholder="Michael" onChange={handleInputChange} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" placeholder="Doe" required />
+                  <Input id="lastName" name="lastName" placeholder="Doe" required onChange={handleInputChange} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                  <Input id="dateOfBirth" type="date" required />
+                  <Input id="dateOfBirth" name="dateOfBirth" type="date" required onChange={handleInputChange} />
                 </div>
                 <div className="space-y-2">
                   <Label>Gender</Label>
-                  <RadioGroup defaultValue="male">
+                  <RadioGroup defaultValue="male" onValueChange={handleRadioChange}>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="male" id="male" />
                       <Label htmlFor="male">Male</Label>
@@ -68,12 +146,25 @@ export default function SignUp() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
-                  <Input id="email" type="email" placeholder="john@example.com" required />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="john@example.com"
+                    required
+                    onChange={handleInputChange}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
-                    <Input id="password" type={showPassword ? "text" : "password"} required />
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      onChange={handleInputChange}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -93,7 +184,13 @@ export default function SignUp() {
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Confirm Password</Label>
                   <div className="relative">
-                    <Input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} required />
+                    <Input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      required
+                      onChange={handleInputChange}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
