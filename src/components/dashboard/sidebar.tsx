@@ -21,6 +21,12 @@ export function Sidebar() {
 
   const handleSignOut = async () => {
     try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+      if (authError) throw authError
+
       const { error } = await supabase.auth.signOut()
       if (error) throw error
 
@@ -30,6 +36,7 @@ export function Sidebar() {
       })
       router.push("/")
     } catch (error) {
+      console.error("Error signing out:", error)
       toast({
         title: "Error signing out",
         description: "There was a problem signing out. Please try again.",

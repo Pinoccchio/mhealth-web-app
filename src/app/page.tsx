@@ -52,6 +52,10 @@ export default function SignIn() {
     }
   }
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword)
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
@@ -92,7 +96,7 @@ export default function SignIn() {
                       variant="ghost"
                       size="icon"
                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={togglePasswordVisibility}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4 text-gray-500" />

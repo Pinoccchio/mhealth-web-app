@@ -14,13 +14,18 @@ import { supabase } from "@/lib/supabase"
 import { Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 
+type AuthData = {
+  user: {
+    id?: string
+  } | null
+}
+
 export default function AddUserPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [formData, setFormData] = useState({
+  const formDataState = {
     first_name: "",
     middle_name: "",
     last_name: "",
@@ -31,9 +36,10 @@ export default function AddUserPage() {
     email: "",
     password: "",
     confirm_password: "",
-    isOnline: false,
-    isActive: true,
-  })
+    status: "active",
+  }
+  const [formData, setFormData] = useState(formDataState)
+  const { toast } = useToast()
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -44,10 +50,21 @@ export default function AddUserPage() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
+  const formatPhoneNumber = (phone: string): string => {
+    if (phone.startsWith("09")) {
+      return "+63" + phone.slice(1)
+    } else if (phone.startsWith("9")) {
+      return "+63" + phone
+    } else if (phone.startsWith("+63")) {
+      return phone
+    }
+    // If the format is not recognized, return the original input
+    return phone
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    console.log("Form Data:", formData)
 
     if (formData.role === "admin" && formData.password !== formData.confirm_password) {
       toast({
@@ -60,13 +77,15 @@ export default function AddUserPage() {
     }
 
     try {
-      let authData
+      let authData: AuthData = { user: null }
+
+      // Use Supabase auth for admin users only
       if (formData.role === "admin") {
-        const { data, error: authError } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
         })
-        if (authError) throw new Error(`Auth Error: ${authError.message}`)
+        if (error) throw error
         authData = data
       }
 
@@ -82,26 +101,8 @@ export default function AddUserPage() {
       const maxId = maxIdData && maxIdData.length > 0 ? Number.parseInt(maxIdData[0].id) : 0
       const nextId = (maxId + 1).toString()
 
-      console.log("Max ID data:", maxIdData)
-      console.log("Generated next ID:", nextId)
-
-      console.log("Inserting user with data:", {
-        id: nextId,
-        first_name: formData.first_name,
-        middle_name: formData.middle_name || null,
-        last_name: formData.last_name,
-        date_of_birth: formData.date_of_birth,
-        gender: formData.gender,
-        phone: formData.role !== "admin" ? formData.phone : null,
-        role: formData.role,
-        created_at: new Date().toISOString(),
-        img_url: null,
-        uid: authData?.user?.id || null,
-        fcm_token: null,
-        email: formData.role === "admin" ? formData.email : null,
-        isOnline: false,
-        isActive: true,
-      })
+      // Format the phone number for non-admin users
+      const formattedPhone = formData.role !== "admin" ? formatPhoneNumber(formData.phone) : null
 
       // Insert user data with proper field mapping
       const { error: insertError } = await supabase.from("userss").insert({
@@ -111,25 +112,21 @@ export default function AddUserPage() {
         last_name: formData.last_name,
         date_of_birth: formData.date_of_birth,
         gender: formData.gender,
-        phone: formData.role !== "admin" ? formData.phone : null,
+        phone: formattedPhone,
         role: formData.role,
         created_at: new Date().toISOString(),
         img_url: null,
-        uid: authData?.user?.id || null,
+        uid: authData.user?.id,
         fcm_token: null,
         email: formData.role === "admin" ? formData.email : null,
-        isOnline: false,
-        isActive: true, // Always set to true when creating a new user
+        status: "active",
       })
 
       if (insertError) throw new Error(`Insert Error: ${insertError.message}`)
 
       toast({
         title: "User added successfully",
-        description:
-          formData.role === "admin"
-            ? "An email will be sent to the admin with their login credentials."
-            : "The user account has been created successfully.",
+        description: "The user account has been created successfully.",
       })
 
       router.push("/dashboard/users")
@@ -170,7 +167,8 @@ export default function AddUserPage() {
             <CardTitle className="text-2xl">Add New User</CardTitle>
           </div>
           <CardDescription className="text-base">
-            Create a new user account. For admin users, you'll need to set up login credentials.
+            Create a new user account. Admin accounts require login credentials, while other roles use phone numbers for
+            identification.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,6 +249,7 @@ export default function AddUserPage() {
                     value={formData.phone}
                     onChange={handleInputChange}
                     className="w-full"
+                    placeholder="e.g., 09123456789"
                     required
                   />
                 </>
@@ -258,7 +257,7 @@ export default function AddUserPage() {
             </div>
 
             {formData.role === "admin" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              <>
                 <div className="space-y-2 w-full">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative w-full">
@@ -313,7 +312,7 @@ export default function AddUserPage() {
                     </Button>
                   </div>
                 </div>
-              </div>
+              </>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
@@ -342,7 +341,6 @@ export default function AddUserPage() {
                 </Select>
               </div>
             </div>
-
             <div className="flex justify-end gap-4 pt-4">
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Cancel
