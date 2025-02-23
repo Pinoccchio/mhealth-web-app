@@ -59,12 +59,11 @@ export default function HealthHistoryRecord() {
   const [isLoading, setIsLoading] = useState(true)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const tableContainerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
   useEffect(() => {
     fetchHealthRecords()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchHealthRecords = async () => {
     try {
@@ -215,7 +214,7 @@ export default function HealthHistoryRecord() {
 
     reader.onload = async (e: ProgressEvent<FileReader>) => {
       try {
-        let jsonData: any[]
+        let jsonData: Record<string, unknown>[]
 
         if (file.name.endsWith(".csv")) {
           const csvData = e.target?.result as string
@@ -303,7 +302,7 @@ export default function HealthHistoryRecord() {
     }
   }
 
-  const findFieldValue = (row: any, fieldName: string): string => {
+  const findFieldValue = (row: Record<string, unknown>, fieldName: string): string => {
     const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, "")
     const entry = Object.entries(row).find(
       ([key]) => key.toLowerCase().replace(/[^a-z0-9]/g, "") === normalizedFieldName,

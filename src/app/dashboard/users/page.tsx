@@ -80,7 +80,6 @@ export default function UserManagement() {
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
   const [importedData, setImportedData] = useState<ImportedUser[]>([])
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -316,7 +315,7 @@ export default function UserManagement() {
         const workbook = XLSX.read(data, { type: "array" })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[]
 
         console.log("Raw imported data:", jsonData)
 
@@ -330,16 +329,16 @@ export default function UserManagement() {
             dateOfBirth = formatExcelDate(dateOfBirth)
           }
 
-          const formattedDateOfBirth = formatDateForSupabase(dateOfBirth)
+          const formattedDateOfBirth = formatDateForSupabase(dateOfBirth as string)
 
           const importedUser: ImportedUser = {
-            "First Name": row["First Name"],
-            "Middle Name": row["Middle Name"] || "",
-            "Last Name": row["Last Name"],
-            "Date of Birth": dateOfBirth,
-            Gender: formatGender(row["Gender"]),
-            Role: row["Role"],
-            "Phone Number": formatPhoneNumber(row["Phone Number"]),
+            "First Name": row["First Name"] as string,
+            "Middle Name": (row["Middle Name"] as string) || "",
+            "Last Name": row["Last Name"] as string,
+            "Date of Birth": dateOfBirth as string,
+            Gender: formatGender(row["Gender"] as string),
+            Role: row["Role"] as string,
+            "Phone Number": formatPhoneNumber(row["Phone Number"] as string),
           }
 
           // Check if user already exists using multiple criteria
@@ -486,15 +485,6 @@ export default function UserManagement() {
       if (valueA > valueB) return sortDirection === "asc" ? 1 : -1
       return 0
     })
-  }
-
-  const handleSort = (column: SortColumn) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortColumn(column)
-      setSortDirection("asc")
-    }
   }
 
   const sortedUsers = sortUsers(users)

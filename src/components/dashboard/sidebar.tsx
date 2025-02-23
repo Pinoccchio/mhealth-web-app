@@ -21,10 +21,7 @@ export function Sidebar() {
 
   const handleSignOut = async () => {
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
+      const { error: authError } = await supabase.auth.getUser()
       if (authError) throw authError
 
       const { error } = await supabase.auth.signOut()
