@@ -10,7 +10,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "User Management", href: "/dashboard/users", icon: Users },
   { name: "Patients Account Requests", href: "/dashboard/requests", icon: ShieldCheck },
-  { name: "Data Management", href: "/dashboard/data", icon: Database },
+  { name: "Health History Record", href: "/dashboard/health-history-record", icon: Database },
   { name: "Support Chat", href: "/dashboard/support", icon: MessageSquare },
 ]
 

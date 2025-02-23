@@ -1,11 +1,10 @@
 "use client"
 
-import { TableHeader } from "@/components/ui/table"
 import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Search,
@@ -18,6 +17,8 @@ import {
   X,
   MessageSquare,
   Upload,
+  Download,
+  ArrowUpDown,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
@@ -64,7 +65,12 @@ interface ImportedUser {
   Gender: string
   Role: string
   "Phone Number": string
+  existingUser?: User | null
+  matchReason?: string
 }
+
+type SortColumn = "first_name" | "last_name" | "date_of_birth" | "role" | "status" | "created_at"
+type SortDirection = "asc" | "desc"
 
 export default function UserManagement() {
   const [activeTab, setActiveTab] = useState("admin")
@@ -77,6 +83,9 @@ export default function UserManagement() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+
+  const [sortColumn, setSortColumn] = useState<SortColumn>("first_name")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -311,7 +320,9 @@ export default function UserManagement() {
 
         console.log("Raw imported data:", jsonData)
 
-        const processedData = jsonData.map((row) => {
+        const processedData: ImportedUser[] = []
+
+        for (const row of jsonData) {
           let dateOfBirth = row["Date of Birth"]
 
           // Handle Excel serial date
@@ -319,16 +330,38 @@ export default function UserManagement() {
             dateOfBirth = formatExcelDate(dateOfBirth)
           }
 
-          return {
+          const formattedDateOfBirth = formatDateForSupabase(dateOfBirth)
+
+          const importedUser: ImportedUser = {
             "First Name": row["First Name"],
             "Middle Name": row["Middle Name"] || "",
             "Last Name": row["Last Name"],
             "Date of Birth": dateOfBirth,
             Gender: formatGender(row["Gender"]),
-            Role: row["Role"], // Keep original capitalization
+            Role: row["Role"],
             "Phone Number": formatPhoneNumber(row["Phone Number"]),
           }
-        })
+
+          // Check if user already exists using multiple criteria
+          const { data: existingUsers, error: fetchError } = await supabase
+            .from("userss")
+            .select("*")
+            .or(
+              `phone.eq.${importedUser["Phone Number"]},date_of_birth.eq.${formattedDateOfBirth},and(first_name.eq.${importedUser["First Name"]},last_name.eq.${importedUser["Last Name"]})`,
+            )
+
+          if (fetchError) {
+            console.error("Error fetching existing users:", fetchError)
+            throw new Error(`Error fetching existing users: ${fetchError.message}`)
+          }
+
+          if (existingUsers && existingUsers.length > 0) {
+            importedUser.existingUser = existingUsers[0]
+            importedUser.matchReason = getMatchReason(importedUser, existingUsers[0])
+          }
+
+          processedData.push(importedUser)
+        }
 
         console.log("Processed data:", processedData)
 
@@ -347,30 +380,73 @@ export default function UserManagement() {
     reader.readAsArrayBuffer(file)
   }
 
+  // Helper function to determine the reason for the match
+  const getMatchReason = (importedUser: ImportedUser, existingUser: User): string => {
+    if (importedUser["Phone Number"] === existingUser.phone) {
+      return "Phone number match"
+    } else if (importedUser["Date of Birth"] === formatDateForDisplay(existingUser.date_of_birth)) {
+      return "Date of birth match"
+    } else {
+      return "Name match"
+    }
+  }
+
   const handleImport = async () => {
     try {
-      for (const user of importedData) {
-        const { data, error } = await supabase.from("userss").insert({
-          first_name: user["First Name"],
-          middle_name: user["Middle Name"] || null,
-          last_name: user["Last Name"],
-          date_of_birth: formatDateForSupabase(user["Date of Birth"]),
-          gender: user["Gender"],
-          role: user["Role"].toLowerCase(), // Convert to lowercase only when inserting into Supabase
-          phone: user["Phone Number"],
-          status: "active",
-          created_at: new Date().toISOString(),
-        })
+      const newUsers = []
+      const updatedUsers = []
 
-        if (error) {
-          console.error("Supabase error:", error)
-          throw new Error(`Supabase error: ${error.message}`)
+      for (const user of importedData) {
+        if (user.existingUser) {
+          // User exists, update the record
+          const { data: updatedUser, error: updateError } = await supabase
+            .from("userss")
+            .update({
+              first_name: user["First Name"],
+              middle_name: user["Middle Name"] || null,
+              last_name: user["Last Name"],
+              gender: user["Gender"],
+              role: user["Role"].toLowerCase(),
+              phone: user["Phone Number"],
+            })
+            .eq("id", user.existingUser.id)
+            .select()
+
+          if (updateError) {
+            console.error("Error updating user:", updateError)
+            throw new Error(`Error updating user: ${updateError.message}`)
+          }
+
+          updatedUsers.push(updatedUser)
+        } else {
+          // User doesn't exist, create a new record
+          const { data: newUser, error: insertError } = await supabase
+            .from("userss")
+            .insert({
+              first_name: user["First Name"],
+              middle_name: user["Middle Name"] || null,
+              last_name: user["Last Name"],
+              date_of_birth: formatDateForSupabase(user["Date of Birth"]),
+              gender: user["Gender"],
+              role: user["Role"].toLowerCase(),
+              phone: user["Phone Number"],
+              status: "active",
+              created_at: new Date().toISOString(),
+            })
+            .select()
+
+          if (insertError) {
+            console.error("Error inserting new user:", insertError)
+            throw new Error(`Error inserting new user: ${insertError.message}`)
+          }
+
+          newUsers.push(newUser)
         }
       }
 
       toast({
-        title: "Success",
-        description: "Users imported successfully.",
+        title: "Import Successful",
+        description: `${newUsers.length} new users created, ${updatedUsers.length} users updated.`,
       })
 
       setIsImportModalOpen(false)
@@ -380,6 +456,87 @@ export default function UserManagement() {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "An unexpected error occurred while importing users.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const sortUsers = (users: User[]): User[] => {
+    return [...users].sort((a, b) => {
+      // Handle date sorting
+      if (sortColumn === "created_at" || sortColumn === "date_of_birth") {
+        const dateA = new Date(a[sortColumn]).getTime()
+        const dateB = new Date(b[sortColumn]).getTime()
+        return sortDirection === "asc" ? dateA - dateB : dateB - dateA
+      }
+
+      // Handle status sorting
+      if (sortColumn === "status") {
+        if (sortDirection === "asc") {
+          return a.status === "active" ? -1 : 1
+        }
+        return a.status === "active" ? 1 : -1
+      }
+
+      // Handle string sorting with null/undefined check
+      const valueA = (a[sortColumn] || "").toLowerCase()
+      const valueB = (b[sortColumn] || "").toLowerCase()
+
+      if (valueA < valueB) return sortDirection === "asc" ? -1 : 1
+      if (valueA > valueB) return sortDirection === "asc" ? 1 : -1
+      return 0
+    })
+  }
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortColumn(column)
+      setSortDirection("asc")
+    }
+  }
+
+  const sortedUsers = sortUsers(users)
+
+  const handleExport = () => {
+    try {
+      let filteredUsers = users
+      if (activeTab === "admin") {
+        filteredUsers = users.filter((user) => user.role === "admin")
+      } else if (activeTab === "health-workers") {
+        filteredUsers = users.filter((user) => ["doctor", "nurse", "midwife", "bhw"].includes(user.role))
+      } else if (activeTab === "patient") {
+        filteredUsers = users.filter((user) => user.role === "patient")
+      }
+
+      const exportData = filteredUsers.map((user) => ({
+        "First Name": user.first_name,
+        "Middle Name": user.middle_name,
+        "Last Name": user.last_name,
+        "Date of Birth": formatDateForDisplay(user.date_of_birth),
+        Gender: user.gender,
+        Phone: user.phone,
+        Email: user.email,
+        Role: user.role,
+        Status: user.status,
+        "Created At": format(new Date(user.created_at), "PPP"),
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(exportData)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Users")
+      XLSX.writeFile(wb, `${activeTab}_users.xlsx`)
+
+      toast({
+        title: "Export Successful",
+        description: `${exportData.length} users exported to Excel.`,
+      })
+    } catch (error) {
+      console.error("Error exporting users:", error)
+      toast({
+        title: "Export Failed",
+        description: "There was an error exporting users to Excel.",
         variant: "destructive",
       })
     }
@@ -398,6 +555,9 @@ export default function UserManagement() {
           <Button onClick={() => fileInputRef.current?.click()}>
             <Upload className="mr-2 h-4 w-4" /> Import Users
           </Button>
+          <Button onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" /> Export Users
+          </Button>
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
         </div>
       </div>
@@ -406,6 +566,88 @@ export default function UserManagement() {
         <Button variant="outline" onClick={() => fetchUsers()}>
           <Search className="h-4 w-4" />
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              Sort by
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[200px]">
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("first_name")
+                setSortDirection("asc")
+              }}
+            >
+              First Name (A-Z)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("first_name")
+                setSortDirection("desc")
+              }}
+            >
+              First Name (Z-A)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("last_name")
+                setSortDirection("asc")
+              }}
+            >
+              Last Name (A-Z)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("last_name")
+                setSortDirection("desc")
+              }}
+            >
+              Last Name (Z-A)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("created_at")
+                setSortDirection("desc")
+              }}
+            >
+              Newest First
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("created_at")
+                setSortDirection("asc")
+              }}
+            >
+              Oldest First
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("role")
+                setSortDirection("asc")
+              }}
+            >
+              Role (A-Z)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("status")
+                setSortDirection("asc")
+              }}
+            >
+              Status (Active First)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSortColumn("status")
+                setSortDirection("desc")
+              }}
+            >
+              Status (Inactive First)
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
@@ -419,15 +661,22 @@ export default function UserManagement() {
               <TableHeader>
                 <TableRow>
                   {activeTab !== "admin" && <TableHead>Profile</TableHead>}
-                  <TableHead>First Name</TableHead>
-                  <TableHead>Middle Name</TableHead>
-                  <TableHead>Last Name</TableHead>
-                  <TableHead>Date of Birth</TableHead>
-                  <TableHead>Gender</TableHead>
-                  <TableHead>{activeTab === "admin" ? "Email" : "Phone"}</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created At</TableHead>
+                  {[
+                    { key: "first_name", label: "First Name" },
+                    { key: "middle_name", label: "Middle Name" },
+                    { key: "last_name", label: "Last Name" },
+                    { key: "date_of_birth", label: "Date of Birth" },
+                    { key: "gender", label: "Gender" },
+                    {
+                      key: activeTab === "admin" ? "email" : "phone",
+                      label: activeTab === "admin" ? "Email" : "Phone",
+                    },
+                    { key: "role", label: "Role" },
+                    { key: "status", label: "Status" },
+                    { key: "created_at", label: "Created At" },
+                  ].map(({ key, label }) => (
+                    <TableHead key={key}>{label}</TableHead>
+                  ))}
                   {activeTab !== "admin" && <TableHead>Online</TableHead>}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -455,7 +704,7 @@ export default function UserManagement() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  users.map((user) => (
+                  sortedUsers.map((user) => (
                     <TableRow key={user.id}>
                       {activeTab !== "admin" && (
                         <TableCell>
@@ -575,13 +824,13 @@ export default function UserManagement() {
 
       {/* Import Preview Modal */}
       <Dialog open={isImportModalOpen} onOpenChange={setIsImportModalOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl">
           <DialogHeader>
             <DialogTitle>Import Preview</DialogTitle>
-            <DialogDescription>Review the data before importing</DialogDescription>
+            <DialogDescription>Review the data before importing. Existing users are highlighted.</DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-[60vh] overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -592,18 +841,116 @@ export default function UserManagement() {
                     <TableHead>Gender</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Phone Number</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Match Reason</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {importedData.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{row["First Name"]}</TableCell>
-                      <TableCell>{row["Middle Name"]}</TableCell>
-                      <TableCell>{row["Last Name"]}</TableCell>
+                    <TableRow key={index} className={row.existingUser ? "bg-yellow-50" : ""}>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.first_name}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["First Name"] !== row.existingUser.first_name
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["First Name"]}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.middle_name}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["Middle Name"] !== row.existingUser.middle_name
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["Middle Name"]}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.last_name}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["Last Name"] !== row.existingUser.last_name
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["Last Name"]}
+                        </div>
+                      </TableCell>
                       <TableCell>{row["Date of Birth"]}</TableCell>
-                      <TableCell>{row["Gender"]}</TableCell>
-                      <TableCell>{row["Role"]}</TableCell>
-                      <TableCell>{row["Phone Number"]}</TableCell>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.gender}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["Gender"] !== row.existingUser.gender
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["Gender"]}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.role}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["Role"].toLowerCase() !== row.existingUser.role
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["Role"]}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.existingUser && (
+                          <div className="text-xs text-gray-500 mb-1">Current: {row.existingUser.phone}</div>
+                        )}
+                        <div
+                          className={
+                            row.existingUser && row["Phone Number"] !== row.existingUser.phone
+                              ? "font-bold text-blue-600"
+                              : ""
+                          }
+                        >
+                          {row["Phone Number"]}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {row.existingUser ? (
+                          <Badge variant="secondary" className="bg-yellow-200 text-yellow-800">
+                            Update
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="bg-green-500">
+                            New
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.matchReason && (
+                          <Badge variant="outline" className="bg-blue-100 text-blue-800">
+                            {row.matchReason}
+                          </Badge>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
