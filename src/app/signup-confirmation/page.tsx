@@ -8,12 +8,12 @@ export default function SignUpConfirmation() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Check Your Email</CardTitle>
-          <CardDescription>We've sent you a confirmation email.</CardDescription>
+          <CardDescription>We&apos;ve sent you a confirmation email.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p>
-            Please check your email and click on the confirmation link to activate your account. If you don't see the
-            email, please check your spam folder.
+            Please check your email and click on the confirmation link to activate your account. If you don&apos;t see
+            the email, please check your spam folder.
           </p>
           <Button asChild className="w-full">
             <Link href="/">Return to Login</Link>
