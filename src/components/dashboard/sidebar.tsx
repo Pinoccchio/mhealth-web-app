@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Users, ShieldCheck, Database, MessageSquare, LogOut, LayoutDashboard } from "lucide-react"
+import { Users, ShieldCheck, Database, LogOut, LayoutDashboard } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -24,7 +24,7 @@ const navigation = [
   { name: "User Management", href: "/dashboard/users", icon: Users },
   { name: "Patients Account Requests", href: "/dashboard/requests", icon: ShieldCheck },
   { name: "Health History Record", href: "/dashboard/health-history-record", icon: Database },
-  { name: "Support Chat", href: "/dashboard/support", icon: MessageSquare },
+  // { name: "Support Chat", href: "/dashboard/support", icon: MessageSquare },
 ]
 
 export function Sidebar() {

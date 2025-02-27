@@ -1,16 +1,25 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, UserCheck, Database, MessageSquare } from "lucide-react"
+import { Users, UserCheck, Database, Activity } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { format, subDays } from "date-fns"
 
 interface DashboardStats {
   totalUsers: number
   pendingVerifications: number
   totalRecords: number
-  activeChats: number
+  activeUsers: number
+}
+
+interface UserGrowthData {
+  date: string
+  count: number
 }
 
 export default function Dashboard() {
@@ -19,8 +28,9 @@ export default function Dashboard() {
     totalUsers: 0,
     pendingVerifications: 0,
     totalRecords: 0,
-    activeChats: 0,
+    activeUsers: 0,
   })
+  const [userGrowth, setUserGrowth] = useState<UserGrowthData[]>([])
   const { toast } = useToast()
 
   useEffect(() => {
@@ -30,72 +40,82 @@ export default function Dashboard() {
           data: { user },
           error: authError,
         } = await supabase.auth.getUser()
-
         if (authError) throw authError
-
-        if (!user) {
-          throw new Error("No authenticated user found")
-        }
-
-        // Update isOnline status to true for the admin user
-        const { data: updateData, error: updateError } = await supabase
-          .from("userss")
-          .update({ isOnline: true })
-          .eq("uid", user.id)
-          .eq("role", "admin")
-          .select()
-
-        if (updateError) throw updateError
-
-        console.log("Update result:", updateData)
+        if (!user) throw new Error("No authenticated user found")
 
         // Fetch admin user data
         const { data: userData, error: userError } = await supabase
           .from("userss")
-          .select("first_name, middle_name, last_name, isOnline")
+          .select("first_name, middle_name, last_name")
           .eq("uid", user.id)
           .eq("role", "admin")
           .single()
 
-        if (userError) {
-          console.error("Error fetching user data:", userError)
-          throw new Error("Failed to fetch user data")
-        }
-
+        if (userError) throw new Error("Failed to fetch user data")
         if (userData) {
           const fullName = [userData.first_name, userData.middle_name, userData.last_name].filter(Boolean).join(" ")
           setAdminName(fullName)
-          console.log("Admin user data:", userData)
         } else {
           throw new Error("No admin user found")
         }
 
-        // Fetch total users count
-        const { count: totalUsers, error: totalUsersError } = await supabase
-          .from("userss")
-          .select("*", { count: "exact", head: true })
+        // Fetch current stats
+        const [currentTotalUsers, currentPendingVerifications, currentActiveUsers] = await Promise.all([
+          supabase.from("userss").select("*", { count: "exact" }),
+          supabase.from("request_acc").select("*", { count: "exact" }),
+          supabase.from("userss").select("*", { count: "exact" }).eq("isUserOnline", "yes").neq("role", "admin"),
+        ])
 
-        if (totalUsersError) throw totalUsersError
-
-        // Fetch pending verifications count from request_acc table
-        const { count: pendingVerifications, error: pendingVerificationsError } = await supabase
-          .from("request_acc")
-          .select("*", { count: "exact", head: true })
-
-        if (pendingVerificationsError) throw pendingVerificationsError
-
-        // Fetch total records count (sum of users and pending requests)
-        const totalRecords = (totalUsers || 0) + (pendingVerifications || 0)
-
-        // For active chats, we'll use a placeholder value since we don't have a chats table
-        const activeChats = 0
+        // Calculate current stats
+        const totalUsers = currentTotalUsers.count || 0
+        const pendingVerifications = currentPendingVerifications.count || 0
+        const activeUsers = currentActiveUsers.count || 0
+        const totalRecords = totalUsers + pendingVerifications
 
         setStats({
-          totalUsers: totalUsers || 0,
-          pendingVerifications: pendingVerifications || 0,
-          totalRecords: totalRecords,
-          activeChats: activeChats,
+          totalUsers,
+          pendingVerifications,
+          totalRecords,
+          activeUsers,
         })
+
+        // Fetch user growth data (last 7 days including today)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0) // Start of today
+        const sevenDaysAgo = subDays(today, 6) // 7 days ago including today
+
+        const { data: growthData, error: growthError } = await supabase
+          .from("userss")
+          .select("created_at")
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .lte("created_at", new Date().toISOString()) // Include all of today
+          .order("created_at", { ascending: true })
+
+        if (growthError) throw growthError
+
+        // Prepare an array with the last 7 days including today
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+          const date = subDays(today, 6 - i) // Count backwards from today
+          return format(date, "yyyy-MM-dd")
+        })
+
+        // Count users for each day
+        const growthByDay = growthData.reduce(
+          (acc, { created_at }) => {
+            const date = format(new Date(created_at), "yyyy-MM-dd")
+            acc[date] = (acc[date] || 0) + 1
+            return acc
+          },
+          {} as Record<string, number>,
+        )
+
+        // Create the final user growth data, including days with zero new users
+        const userGrowthData = last7Days.map((date) => ({
+          date: format(new Date(date), "MM/dd"), // Format date as MM/dd for display
+          count: growthByDay[date] || 0,
+        }))
+
+        setUserGrowth(userGrowthData)
       } catch (error) {
         console.error("Error fetching dashboard data:", error)
         toast({
@@ -107,75 +127,78 @@ export default function Dashboard() {
     }
 
     fetchDashboardData()
-
-    // Cleanup function to set isOnline to false when the component unmounts
-    return () => {
-      async function setOffline() {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          const { error } = await supabase
-            .from("userss")
-            .update({ isOnline: false })
-            .eq("uid", user.id)
-            .eq("role", "admin")
-
-          if (error) {
-            console.error("Error setting user offline:", error)
-          }
-        }
-      }
-      setOffline()
-    }
   }, [toast])
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-gray-900">Welcome, {adminName || "Admin"}</h1>
+      <h1 className="text-3xl font-bold text-gray-900">Welcome back, {adminName || "Admin"}</h1>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers}</div>
-            <p className="text-xs text-muted-foreground">Total registered users</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Verifications</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingVerifications}</div>
-            <p className="text-xs text-muted-foreground">Account requests awaiting approval</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Records</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalRecords}</div>
-            <p className="text-xs text-muted-foreground">Total users and pending requests</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Chats</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeChats}</div>
-            <p className="text-xs text-muted-foreground">Ongoing chat sessions</p>
-          </CardContent>
-        </Card>
+        <StatsCard
+          title="Total Users"
+          value={stats.totalUsers}
+          description="Registered users"
+          icon={<Users className="h-6 w-6" />}
+        />
+        <StatsCard
+          title="Pending Verifications"
+          value={stats.pendingVerifications}
+          description="Account requests"
+          icon={<UserCheck className="h-6 w-6" />}
+        />
+        <StatsCard
+          title="Total Records"
+          value={stats.totalRecords}
+          description="Users and requests"
+          icon={<Database className="h-6 w-6" />}
+        />
+        <StatsCard
+          title="Active Users"
+          value={stats.activeUsers}
+          description="Currently online (non-admin)"
+          icon={<Activity className="h-6 w-6" />}
+        />
       </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>User Growth (Last 7 Days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={userGrowth}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
     </div>
+  )
+}
+
+interface StatsCardProps {
+  title: string
+  value: number
+  description: string
+  icon: React.ReactNode
+}
+
+function StatsCard({ title, value, description, icon }: StatsCardProps) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        {icon}
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
   )
 }
 

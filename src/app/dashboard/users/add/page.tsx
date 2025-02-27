@@ -126,6 +126,34 @@ export default function AddUserPage() {
 
       if (insertError) throw new Error(`Insert Error: ${insertError.message}`)
 
+      // Send SMS notification for non-admin users
+      if (formData.role !== "admin" && formattedPhone) {
+        try {
+          const smsResponse = await fetch("/api/send-sms", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              phone: formattedPhone,
+              firstName: formData.first_name,
+            }),
+          })
+
+          const smsResult = await smsResponse.json()
+
+          if (!smsResponse.ok) {
+            console.warn("SMS notification failed:", smsResult)
+            // We don't throw an error here to avoid blocking the user creation flow
+          } else {
+            console.log("SMS notification sent successfully:", smsResult)
+          }
+        } catch (smsError) {
+          console.warn("Error sending SMS notification:", smsError)
+          // We don't throw an error here to avoid blocking the user creation flow
+        }
+      }
+
       toast({
         title: "User added successfully",
         description: "The user account has been created successfully.",

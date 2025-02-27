@@ -441,6 +441,30 @@ export default function UserManagement() {
           }
 
           newUsers.push(newUser)
+
+          // Send SMS notification to the new user
+          try {
+            const response = await fetch("/api/send-sms", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                phone: user["Phone Number"],
+                firstName: user["First Name"],
+              }),
+            })
+
+            const smsResult = await response.json()
+
+            if (!response.ok) {
+              console.warn("SMS notification failed for user:", user["First Name"], smsResult)
+            } else {
+              console.log("SMS notification sent successfully to:", user["First Name"])
+            }
+          } catch (smsError) {
+            console.warn("Error sending SMS notification to user:", user["First Name"], smsError)
+          }
         }
       }
 

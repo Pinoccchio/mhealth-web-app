@@ -146,6 +146,29 @@ export default function PatientAccountRequests() {
         throw new Error(`Delete Request Error: ${deleteError.message}`)
       }
 
+      // Send SMS notification
+      try {
+        const response = await fetch("/api/send-sms", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: request.phone,
+            firstName: request.first_name,
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          console.warn("Failed to send SMS notification:", errorData)
+        } else {
+          console.log("SMS notification sent successfully")
+        }
+      } catch (smsError) {
+        console.error("Error sending SMS notification:", smsError)
+      }
+
       // Update the local state
       setRequests(requests.filter((r) => r.id !== request.id))
 
