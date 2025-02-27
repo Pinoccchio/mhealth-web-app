@@ -41,6 +41,19 @@ export default function SignUp() {
     setFormData((prev) => ({ ...prev, gender: value }))
   }
 
+  const isAtLeast18 = (birthDate: string): boolean => {
+    const today = new Date()
+    const birthDateObj = new Date(birthDate)
+    let age = today.getFullYear() - birthDateObj.getFullYear()
+    const monthDiff = today.getMonth() - birthDateObj.getMonth()
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDateObj.getDate())) {
+      age--
+    }
+
+    return age >= 18
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -49,6 +62,16 @@ export default function SignUp() {
       toast({
         title: "Error",
         description: "Passwords do not match",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+      return
+    }
+
+    if (!isAtLeast18(formData.dateOfBirth)) {
+      toast({
+        title: "Error",
+        description: "You must be at least 18 years old to sign up",
         variant: "destructive",
       })
       setIsLoading(false)
@@ -102,7 +125,7 @@ export default function SignUp() {
           uid: authData.user.id,
           fcm_token: null,
           status: "pending",
-          isUserOnline: "no", 
+          isUserOnline: "no",
         })
 
         if (insertError) throw insertError
