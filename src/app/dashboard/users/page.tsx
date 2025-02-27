@@ -395,6 +395,20 @@ export default function UserManagement() {
       const newUsers = []
       const updatedUsers = []
 
+      // Get the maximum existing ID first
+      const { data: maxIdData, error: maxIdError } = await supabase
+        .from("userss")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+
+      if (maxIdError) {
+        console.error("Error getting max ID:", maxIdError)
+        throw new Error(`Error getting max ID: ${maxIdError.message}`)
+      }
+
+      let nextId = maxIdData && maxIdData.length > 0 ? Number(maxIdData[0].id) + 1 : 1
+
       for (const user of importedData) {
         if (user.existingUser) {
           // User exists, update the record
@@ -418,10 +432,11 @@ export default function UserManagement() {
 
           updatedUsers.push(updatedUser)
         } else {
-          // User doesn't exist, create a new record
+          // User doesn't exist, create a new record with incremented ID
           const { data: newUser, error: insertError } = await supabase
             .from("userss")
             .insert({
+              id: nextId.toString(), // Convert to string since ID is stored as string
               first_name: user["First Name"],
               middle_name: user["Middle Name"] || null,
               last_name: user["Last Name"],
@@ -431,7 +446,7 @@ export default function UserManagement() {
               phone: user["Phone Number"],
               status: "active",
               created_at: new Date().toISOString(),
-              isUserOnline: "no", // Set initial online status
+              isUserOnline: "no",
             })
             .select()
 
@@ -441,6 +456,7 @@ export default function UserManagement() {
           }
 
           newUsers.push(newUser)
+          nextId++ // Increment ID for next new user
 
           // Send SMS notification to the new user
           try {
