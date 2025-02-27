@@ -37,6 +37,7 @@ export default function AddUserPage() {
     password: "",
     confirm_password: "",
     status: "active",
+    isUserOnline: "no",
   }
   const [formData, setFormData] = useState(formDataState)
   const { toast } = useToast()
@@ -120,6 +121,7 @@ export default function AddUserPage() {
         fcm_token: null,
         email: formData.role === "admin" ? formData.email : null,
         status: "active",
+        isUserOnline: "no",
       })
 
       if (insertError) throw new Error(`Insert Error: ${insertError.message}`)

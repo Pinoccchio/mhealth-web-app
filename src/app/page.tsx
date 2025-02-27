@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
@@ -35,6 +34,17 @@ export default function SignIn() {
       if (error) throw error
 
       if (data.user) {
+        // Update user status to active and isUserOnline to yes
+        const { error: updateError } = await supabase
+          .from("userss")
+          .update({ status: "active", isUserOnline: "yes" })
+          .eq("email", email)
+
+        if (updateError) {
+          console.error("Error updating user status:", updateError)
+          // We'll continue with the sign-in process even if the status update fails
+        }
+
         toast({
           title: "Sign in successful",
           description: "Welcome back to mHealth admin dashboard.",

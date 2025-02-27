@@ -1,10 +1,23 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Users, ShieldCheck, Database, MessageSquare, LogOut, LayoutDashboard } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -18,11 +31,28 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { toast } = useToast()
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false)
 
   const handleSignOut = async () => {
     try {
-      const { error: authError } = await supabase.auth.getUser()
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
       if (authError) throw authError
+
+      if (user) {
+        // Set isUserOnline to "no" for the admin user
+        const { error: updateError } = await supabase
+          .from("userss")
+          .update({ isUserOnline: "no" })
+          .eq("uid", user.id)
+          .eq("role", "admin")
+
+        if (updateError) {
+          console.error("Error updating user online status:", updateError)
+        }
+      }
 
       const { error } = await supabase.auth.signOut()
       if (error) throw error
@@ -39,6 +69,8 @@ export function Sidebar() {
         description: "There was a problem signing out. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsSignOutDialogOpen(false)
     }
   }
 
@@ -53,7 +85,6 @@ export function Sidebar() {
           </div>
           <nav className="px-2 space-y-1">
             {navigation.map((item) => {
-              // For dashboard, check exact match. For others, check if pathname starts with the href
               const isActive = item.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.href)
 
               return (
@@ -73,13 +104,31 @@ export function Sidebar() {
           </nav>
         </div>
         <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleSignOut}
-            className="flex w-full items-center px-4 py-3 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50"
-          >
-            <LogOut className="mr-3 h-5 w-5" />
-            Sign out
-          </button>
+          <AlertDialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+            <AlertDialogTrigger asChild>
+              <button className="flex w-full items-center px-4 py-3 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50">
+                <LogOut className="mr-3 h-5 w-5" />
+                Sign out
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure you want to sign out?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  You will be logged out of your account and redirected to the login page.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleSignOut}
+                  className={cn("bg-red-500 text-white", "hover:bg-red-600", "focus:ring-red-500")}
+                >
+                  Sign out
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     </div>

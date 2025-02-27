@@ -19,12 +19,13 @@ export default function SignUp() {
   const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     firstName: "",
     middleName: "",
     lastName: "",
     dateOfBirth: "",
-    gender: "male",
+    gender: "M",
     email: "",
     password: "",
     confirmPassword: "",
@@ -42,6 +43,7 @@ export default function SignUp() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
 
     if (formData.password !== formData.confirmPassword) {
       toast({
@@ -49,6 +51,7 @@ export default function SignUp() {
         description: "Passwords do not match",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -57,30 +60,59 @@ export default function SignUp() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            middle_name: formData.middleName,
+            last_name: formData.lastName,
+            date_of_birth: formData.dateOfBirth,
+            gender: formData.gender,
+            role: "admin",
+          },
+        },
       })
 
       if (authError) throw authError
 
       if (authData.user) {
-        // Insert the user data into the admin_users table
-        const { error: insertError } = await supabase.from("admin_users").insert({
-          id: authData.user.id,
+        // Get the maximum existing ID
+        const { data: maxIdData, error: maxIdError } = await supabase
+          .from("userss")
+          .select("id")
+          .order("id", { ascending: false })
+          .limit(1)
+
+        if (maxIdError) throw new Error(`Max ID Error: ${maxIdError.message}`)
+
+        const maxId = maxIdData && maxIdData.length > 0 ? Number.parseInt(maxIdData[0].id) : 0
+        const nextId = (maxId + 1).toString()
+
+        // Insert the user data into the userss table
+        const { error: insertError } = await supabase.from("userss").insert({
+          id: nextId,
           first_name: formData.firstName,
-          middle_name: formData.middleName,
+          middle_name: formData.middleName || null,
           last_name: formData.lastName,
           date_of_birth: formData.dateOfBirth,
           gender: formData.gender,
           email: formData.email,
+          role: "admin",
+          created_at: new Date().toISOString(),
+          img_url: null,
+          uid: authData.user.id,
+          fcm_token: null,
+          status: "pending",
+          isUserOnline: "no", 
         })
 
         if (insertError) throw insertError
 
-        // Show success toast and redirect to dashboard
+        // Show success toast and redirect to confirmation page
         toast({
           title: "Sign up successful!",
-          description: "Welcome to mHealth admin dashboard.",
+          description: "Please check your email to confirm your account.",
         })
-        router.push("/dashboard")
+        router.push("/signup-confirmation")
       }
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -96,6 +128,8 @@ export default function SignUp() {
           variant: "destructive",
         })
       }
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -133,13 +167,13 @@ export default function SignUp() {
                 </div>
                 <div className="space-y-2">
                   <Label>Gender</Label>
-                  <RadioGroup defaultValue="male" onValueChange={handleRadioChange}>
+                  <RadioGroup defaultValue="M" onValueChange={handleRadioChange}>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="male" id="male" />
+                      <RadioGroupItem value="M" id="male" />
                       <Label htmlFor="male">Male</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="female" id="female" />
+                      <RadioGroupItem value="F" id="female" />
                       <Label htmlFor="female">Female</Label>
                     </div>
                   </RadioGroup>
@@ -207,8 +241,8 @@ export default function SignUp() {
                     </Button>
                   </div>
                 </div>
-                <Button type="submit" className="w-full">
-                  Create Account
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? "Creating Account..." : "Create Account"}
                 </Button>
                 <div className="text-center text-sm text-gray-600">
                   Already have an account?{" "}

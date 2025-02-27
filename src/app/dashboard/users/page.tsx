@@ -53,7 +53,7 @@ interface User {
   role: string
   created_at: string
   status: string
-  isOnline?: boolean
+  isUserOnline: "yes" | "no"
   img_url?: string
 }
 
@@ -431,6 +431,7 @@ export default function UserManagement() {
               phone: user["Phone Number"],
               status: "active",
               created_at: new Date().toISOString(),
+              isUserOnline: "no", // Set initial online status
             })
             .select()
 
@@ -664,17 +665,17 @@ export default function UserManagement() {
                     { key: "role", label: "Role" },
                     { key: "status", label: "Status" },
                     { key: "created_at", label: "Created At" },
+                    { key: "isUserOnline", label: "Online Status" },
                   ].map(({ key, label }) => (
                     <TableHead key={key}>{label}</TableHead>
                   ))}
-                  {activeTab !== "admin" && <TableHead>Online</TableHead>}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={activeTab === "admin" ? 10 : 12} className="h-24 text-center">
+                    <TableCell colSpan={11} className="h-24 text-center">
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
                       </div>
@@ -682,10 +683,7 @@ export default function UserManagement() {
                   </TableRow>
                 ) : users.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={activeTab === "admin" ? 10 : 12}
-                      className="h-24 text-center text-muted-foreground"
-                    >
+                    <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
                       {activeTab === "admin"
                         ? "No admin users found. Create an admin user to get started."
                         : activeTab === "health-workers"
@@ -727,7 +725,14 @@ export default function UserManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell>{format(new Date(user.created_at), "PPP")}</TableCell>
-                      {activeTab !== "admin" && <TableCell>{user.isOnline ? "Yes" : "No"}</TableCell>}
+                      <TableCell>
+                        <Badge
+                          variant={user.isUserOnline === "yes" ? "default" : "secondary"}
+                          className={user.isUserOnline === "yes" ? "bg-green-500" : "bg-gray-500"}
+                        >
+                          {user.isUserOnline === "yes" ? "Online" : "Offline"}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
